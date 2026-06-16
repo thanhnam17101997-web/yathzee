@@ -6,34 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Yahtzee Score">
-<title>Yahtzee Scoreboard Pro</title>
+<title>Yahtzee Scoreboard</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<!-- Firebase -->
-<script type="module" id="firebase-init">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
-  import { getFirestore, collection, setDoc, doc, onSnapshot, query, orderBy, limit, writeBatch, getDoc, serverTimestamp, deleteDoc, getDocs } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
-
-  const firebaseConfig = {
-    projectId: "gen-lang-client-0564394082",
-    appId: "1:934488448582:web:2f9df6ae87b322620c3447",
-    apiKey: "AIzaSyCM1FM8bQajpu-MQLzuHwgwOuFYfLK9GGA",
-    authDomain: "gen-lang-client-0564394082.firebaseapp.com",
-    storageBucket: "gen-lang-client-0564394082.firebasestorage.app",
-    messagingSenderId: "934488448582",
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app, "ai-studio-6de74d09-2c93-4046-b639-3e6aba236a37");
-
-  window.__firebase = {
-    db, collection, setDoc, doc, onSnapshot, query, orderBy, limit,
-    writeBatch, getDoc, serverTimestamp, deleteDoc, getDocs
-  };
-  window.dispatchEvent(new Event('firebase-ready'));
-</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Inter:wght@400;700;900&family=Playfair+Display:ital@1&display=swap');
   * { box-sizing: border-box; }
@@ -43,29 +20,19 @@
   :root { --accent: #e63946; }
   .text-accent { color: var(--accent); }
   .bg-accent { background: var(--accent); }
-  .border-accent { border-color: var(--accent); }
   @keyframes bounce { 0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)} }
   .animate-bounce { animation: bounce 1s infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .animate-spin { animation: spin 2s linear infinite; }
 </style>
 <script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: { accent: '#e63946' }
-      }
-    }
-  }
+  tailwind.config = { theme: { extend: { colors: { accent: '#e63946' } } } }
 </script>
 </head>
 <body>
 <div id="root"></div>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef } = React;
 
-// ─── SCORING ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
   ones:'Ones', twos:'Twos', threes:'Threes', fours:'Fours', fives:'Fives', sixes:'Sixes',
   twoPairs:'2 Pairs', threePairs:'3 Pairs', fourOfAKind:'4 of a Kind',
@@ -75,11 +42,11 @@ const CATEGORY_LABELS = {
 const CATEGORY_DESCRIPTIONS = {
   ones:'Sum of 1s only', twos:'Sum of 2s only', threes:'Sum of 3s only',
   fours:'Sum of 4s only', fives:'Sum of 5s only', sixes:'Sum of 6s only',
-  twoPairs:'Two pairs. Sum of all dice', threePairs:'Three pairs. Sum of all dice',
-  fourOfAKind:'4 same dice. Sum + 20 bonus', fullHouse:'3+2 or 4+2. Sum + 30 bonus',
-  allRed:'All dice are 1 or 4. Fixed 40 pts', lowestPoint:'Sum ≤8:30, 9-11:20, 12-14:10 pts',
-  largeStraight:'5 consecutive. Fixed 45 pts', yahtzee5:'5 same. Sum + 50 bonus',
-  yahtzee6:'6 same. Sum + 75 bonus', chance:'Sum of all dice',
+  twoPairs:'Two pairs — sum of all dice', threePairs:'Three pairs — sum of all dice',
+  fourOfAKind:'4 same — sum + 20 bonus', fullHouse:'3+2 or 4+2 — sum + 30 bonus',
+  allRed:'All 1s or 4s — fixed 40 pts', lowestPoint:'Sum<=8: 30 | 9-11: 20 | 12-14: 10 pts',
+  largeStraight:'5 consecutive — fixed 45 pts', yahtzee5:'5 same — sum + 50 bonus',
+  yahtzee6:'6 same — sum + 75 bonus', chance:'Sum of all dice',
 };
 const CATEGORY_BONUSES = {
   ones:0, twos:0, threes:0, fours:0, fives:0, sixes:0,
@@ -93,7 +60,7 @@ const ALL_CATS = [...UPPER_CATS, ...LOWER_CATS];
 function getCounts(dice) {
   return dice.reduce((acc, d) => { acc[d] = (acc[d]||0)+1; return acc; }, {});
 }
-const TRADITIONAL_POINTS = {
+const CALC_POINTS = {
   ones:(d)=>d.filter(x=>x===1).reduce((a,b)=>a+b,0),
   twos:(d)=>d.filter(x=>x===2).reduce((a,b)=>a+b,0),
   threes:(d)=>d.filter(x=>x===3).reduce((a,b)=>a+b,0),
@@ -112,68 +79,51 @@ const TRADITIONAL_POINTS = {
   chance:(d)=>d.reduce((a,b)=>a+b,0),
 };
 
-const getVal = v => v==='scratch'?0:(v||0);
-function calcUpper(s){return UPPER_CATS.reduce((a,k)=>a+getVal(s[k]),0);}
-function calcBonus(u){return u>=63?35:0;}
-function calcLower(s){return LOWER_CATS.reduce((a,k)=>a+getVal(s[k]),0);}
-function calcTotal(s){const u=calcUpper(s);return u+calcBonus(u)+calcLower(s);}
-
-// Compute final score for manual entry (fixes the duplicate logic bug)
-function computeManualScore(category, diceSum) {
-  if (!diceSum && diceSum !== 0) return null;
-  if (category === 'allRed') return diceSum > 0 ? 40 : 0;
-  if (category === 'largeStraight') return diceSum > 0 ? 45 : 0;
+function computeManualScore(category, sum) {
+  if (!sum && sum !== 0) return null;
+  if (category === 'allRed') return sum > 0 ? 40 : 0;
+  if (category === 'largeStraight') return sum > 0 ? 45 : 0;
   if (category === 'lowestPoint') {
-    if (!diceSum) return 0;
-    if (diceSum <= 8) return 30;
-    if (diceSum <= 11) return 20;
-    if (diceSum <= 14) return 10;
-    return 0;
+    if (sum <= 8) return 30; if (sum <= 11) return 20; if (sum <= 14) return 10; return 0;
   }
-  return diceSum + (diceSum > 0 ? CATEGORY_BONUSES[category] : 0);
+  return sum + (sum > 0 ? CATEGORY_BONUSES[category] : 0);
 }
 
-// ─── HELPERS ───────────────────────────────────────────────────────────────
-const genId = () => { try { return crypto.randomUUID(); } catch(e) { return Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2); }};
-const genMatch = () => ({ gameId: genId(), matchNumber: Math.floor(Math.random()*9000+1000) });
+const getVal = v => v === 'scratch' ? 0 : (v || 0);
+const calcUpper = s => UPPER_CATS.reduce((a,k) => a + getVal(s[k]), 0);
+const calcBonus = u => u >= 63 ? 35 : 0;
+const calcLower = s => LOWER_CATS.reduce((a,k) => a + getVal(s[k]), 0);
+const calcTotal = s => { const u = calcUpper(s); return u + calcBonus(u) + calcLower(s); };
 
-// ─── DIE COMPONENT ─────────────────────────────────────────────────────────
-const DOT_POSITIONS = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
+const genId = () => { try { return crypto.randomUUID(); } catch(e) { return Math.random().toString(36).slice(2)+Date.now().toString(36); }};
+const genMatchNum = () => Math.floor(Math.random()*9000+1000);
+const lsGet = (key, fallback) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; }};
+const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} };
+
+const DOT_POS = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
 function Die({ value }) {
-  const dots = DOT_POSITIONS[value] || [];
+  const dots = DOT_POS[value] || [];
   return (
-    <div className="grid grid-cols-3 gap-0.5 w-full h-full p-2.5">
+    <div className="grid grid-cols-3 gap-0.5 w-full h-full p-2">
       {[...Array(9)].map((_,i) => (
         <div key={i} className="flex items-center justify-center">
-          {dots.includes(i) && <div className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm" />}
+          {dots.includes(i) && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
         </div>
       ))}
     </div>
   );
 }
 
-// ─── SHARED UI ──────────────────────────────────────────────────────────────
-const PAPER_BG = { backgroundImage: 'url("https://www.transparenttextures.com/patterns/natural-paper.png")' };
-
-function Modal({ children, zIndex = 'z-[100]' }) {
-  return (
-    <div className={`fixed inset-0 bg-blue-900/40 backdrop-blur-sm ${zIndex} flex items-center justify-center p-4 overflow-hidden`}>
-      <div className="bg-[#fdfcf0] border-[6px] border-[#dcd7c9] p-8 md:p-10 rounded-none shadow-[24px_24px_0px_rgba(0,0,0,0.1)] max-w-lg w-full relative max-h-[90vh] overflow-y-auto">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-multiply" style={PAPER_BG} />
-        {children}
-      </div>
-    </div>
-  );
-}
+const PAPER = { backgroundImage: 'url("https://www.transparenttextures.com/patterns/natural-paper.png")' };
 
 function ConfirmModal({ message, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
       <div className="bg-[#fdfcf0] border-[6px] border-[#dcd7c9] p-10 shadow-[24px_24px_0px_rgba(0,0,0,0.1)] max-w-sm w-full text-center relative">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER} />
         <p className="text-3xl font-hand text-blue-900 mb-8 leading-tight relative z-10">{message}</p>
         <div className="grid grid-cols-2 gap-4 relative z-10">
-          <button onClick={onConfirm} className="py-4 bg-blue-900 text-white font-black uppercase text-sm tracking-widest hover:bg-blue-800 transition-colors shadow-[3px_3px_0px_#dcd7c9]">Confirm</button>
+          <button onClick={onConfirm} className="py-4 bg-blue-900 text-white font-black uppercase text-sm tracking-widest hover:bg-blue-800 transition-colors">Confirm</button>
           <button onClick={onCancel} className="py-4 border-4 border-[#dcd7c9] text-blue-900 font-black uppercase text-sm tracking-widest hover:bg-white transition-colors">Cancel</button>
         </div>
       </div>
@@ -181,7 +131,6 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
   );
 }
 
-// ─── SCOREBOARD TABLE COMPONENTS ────────────────────────────────────────────
 function SectionHeader({ title }) {
   return (
     <tr className="bg-[#dcd7c9]/30">
@@ -194,25 +143,24 @@ function SectionHeader({ title }) {
 
 function ScoreRow({ category, players, onClick }) {
   const bonus = CATEGORY_BONUSES[category] || 0;
-  const desc = CATEGORY_DESCRIPTIONS[category] || '';
   return (
     <tr className="border-b-2 last:border-0 group transition-colors hover:bg-blue-50/50 border-[#dcd7c9]/50">
-      <td className="p-4 font-black text-sm uppercase tracking-tighter border-r-4 sticky left-0 z-10 transition-colors bg-[#fdfcf0] border-[#dcd7c9] group-hover:bg-[#f5f2e8]">
-        <div className="flex flex-col items-start gap-1">
-          <span className="leading-none mb-1">{CATEGORY_LABELS[category]}</span>
-          {desc && <span className="text-[8px] font-bold text-gray-400 capitalize whitespace-nowrap">{desc}</span>}
-          {bonus > 0 && <span className="text-[10px] px-1 py-0.5 bg-blue-100 text-blue-800 mt-1">+{bonus} Bonus</span>}
+      <td className="p-3 font-black text-sm uppercase tracking-tighter border-r-4 sticky left-0 z-10 bg-[#fdfcf0] border-[#dcd7c9] group-hover:bg-[#f5f2e8] transition-colors">
+        <div className="flex flex-col gap-0.5">
+          <span>{CATEGORY_LABELS[category]}</span>
+          <span className="text-[8px] font-bold text-gray-400 normal-case whitespace-nowrap">{CATEGORY_DESCRIPTIONS[category]}</span>
+          {bonus > 0 && <span className="text-[9px] px-1 py-0.5 bg-blue-100 text-blue-800 w-fit">+{bonus}</span>}
         </div>
       </td>
       {players.map((player, idx) => {
         const val = player.scores[category];
-        const isFilled = val !== undefined;
+        const filled = val !== undefined;
         return (
           <td key={player.id} onClick={() => onClick(idx)}
-            className={`p-5 text-center cursor-pointer border-l-2 transition-all font-black text-2xl border-[#dcd7c9]/50 ${
-              isFilled ? (val === 'scratch' ? 'bg-red-50/30 text-red-400 italic text-xl' : 'bg-transparent text-blue-800 font-hand text-3xl') : 'text-[#dcd7c9]/40 hover:text-blue-400'
+            className={`p-4 text-center cursor-pointer border-l-2 transition-all font-black text-2xl border-[#dcd7c9]/50 ${
+              filled ? (val === 'scratch' ? 'text-red-400 italic text-base' : 'text-blue-800 font-hand text-3xl') : 'text-[#dcd7c9]/40 hover:text-blue-400'
             }`}>
-            {isFilled ? (val === 'scratch' ? 'SCRATCH' : val) : '-'}
+            {filled ? (val === 'scratch' ? 'X' : val) : '—'}
           </td>
         );
       })}
@@ -223,509 +171,222 @@ function ScoreRow({ category, players, onClick }) {
 function SummaryRow({ title, valueFn, players }) {
   return (
     <tr className="border-b-2 bg-[#f5f2e8] border-[#dcd7c9]">
-      <td className="p-4 font-black text-[11px] uppercase tracking-[2px] opacity-40 sticky left-0 z-10 border-r-4 bg-[#f5f2e8] border-[#dcd7c9]">{title}</td>
+      <td className="p-3 font-black text-[10px] uppercase tracking-[2px] opacity-40 sticky left-0 z-10 border-r-4 bg-[#f5f2e8] border-[#dcd7c9]">{title}</td>
       {players.map(p => (
-        <td key={p.id} className="p-4 text-center border-l-2 font-black text-xl italic border-[#dcd7c9]/50 text-blue-950/40">{valueFn(p.scores)}</td>
+        <td key={p.id} className="p-3 text-center border-l-2 font-black text-lg italic border-[#dcd7c9]/50 text-blue-950/40">{valueFn(p.scores)}</td>
       ))}
     </tr>
   );
 }
 
-// ─── MODALS ─────────────────────────────────────────────────────────────────
-function HistoryModal({ history, onClose, onClear }) {
-  return (
-    <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
-      <div className="bg-[#fdfcf0] border-[6px] border-[#dcd7c9] p-8 md:p-10 rounded-none shadow-[24px_24px_0px_rgba(0,0,0,0.1)] max-w-2xl w-full max-h-[85vh] overflow-y-auto relative">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
-        <div className="flex justify-between items-start mb-8 relative z-10">
-          <div>
-            <h3 className="text-5xl font-black uppercase tracking-tighter leading-none font-hand text-blue-900">Match Log</h3>
-            <p className="text-xs font-black uppercase tracking-[2px] mt-2 text-blue-950/40">Recently Completed Games</p>
-          </div>
-          <button onClick={onClose} className="text-4xl font-black hover:text-blue-600 transition-colors leading-none text-blue-900">×</button>
-        </div>
-        {history.length === 0 ? (
-          <div className="py-20 text-center border-4 border-dashed border-[#dcd7c9] relative z-10">
-            <p className="font-serif italic text-gray-400 uppercase text-xs tracking-widest">No history recorded.</p>
-          </div>
-        ) : (
-          <div className="space-y-6 relative z-10">
-            {history.map(entry => (
-              <div key={entry.id} className="border-4 border-[#dcd7c9] bg-white p-6 shadow-[6px_6px_0px_rgba(0,0,0,0.05)]">
-                <div className="flex justify-between items-start mb-4 pb-2 border-b-2 border-dashed border-[#dcd7c9]">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-900 text-white px-2 py-0.5 text-[10px] font-black uppercase">Match #{entry.matchNumber}</div>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                      {new Date(entry.date).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {[...entry.players].sort((a,b)=>b.score-a.score).map((p, idx) => {
-                    const isWinner = entry.winners.includes(p.name);
-                    return (
-                      <div key={p.name} className={`flex items-center justify-between p-3 border-2 ${isWinner?'border-accent bg-blue-50/30':'border-[#f5f2e8] bg-white'}`}>
-                        <div className="flex items-center gap-4">
-                          <span className={`text-xl font-black ${isWinner?'text-blue-900':'text-gray-400'}`}>#{idx+1}</span>
-                          <span className="font-hand text-2xl text-blue-800">{p.name}</span>
-                          {isWinner && <span className="text-accent text-sm">🏆</span>}
-                        </div>
-                        <span className={`text-2xl font-black ${isWinner?'text-accent':'text-blue-900/60'}`}>{p.score}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <button onClick={onClear} className="mt-12 text-[9px] font-black uppercase tracking-widest text-[#dcd7c9] hover:text-accent transition-colors flex items-center gap-2 relative z-10">
-          ↺ Clear Log
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function StatsModal({ stats, onClose, onClear }) {
-  const statList = Object.values(stats).sort((a,b) => b.highestScore - a.highestScore);
-  return (
-    <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
-      <div className="bg-[#fdfcf0] border-[6px] border-[#dcd7c9] p-8 md:p-10 rounded-none shadow-[24px_24px_0px_rgba(0,0,0,0.1)] max-w-2xl w-full max-h-[85vh] overflow-y-auto relative">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
-        <div className="flex justify-between items-start mb-8 relative z-10">
-          <div>
-            <h3 className="text-5xl font-black uppercase tracking-tighter leading-none font-hand text-blue-900">Hall of Fame</h3>
-            <p className="text-xs font-black uppercase tracking-[2px] mt-2 text-blue-950/40">Lifetime Statistics</p>
-          </div>
-          <button onClick={onClose} className="text-4xl font-black hover:text-blue-600 transition-colors leading-none text-blue-900">×</button>
-        </div>
-        {statList.length === 0 ? (
-          <div className="py-20 text-center border-4 border-dashed border-[#dcd7c9] relative z-10">
-            <p className="font-serif italic text-gray-400 uppercase text-xs tracking-widest">No history yet. Finish a game to see stats.</p>
-          </div>
-        ) : (
-          <div className="space-y-4 relative z-10">
-            {statList.map((s, idx) => (
-              <div key={s.name} className="border-4 border-[#dcd7c9] bg-white/50 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 group hover:border-blue-900 transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-900 text-white flex items-center justify-center text-xl font-black shadow-[3px_3px_0px_#dcd7c9]">#{idx+1}</div>
-                  <div>
-                    <h4 className="text-3xl font-black font-hand text-blue-800 leading-none">{s.name}</h4>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 bg-blue-50 border border-blue-900 text-blue-900">
-                        Win Rate: {((s.wins/s.gamesPlayed)*100).toFixed(1)}%
-                      </span>
-                      {idx === 0 && <span className="text-accent text-sm">🥇</span>}
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-6 w-full md:w-auto border-t-2 md:border-t-0 md:border-l-2 border-[#dcd7c9] pt-4 md:pt-0 md:pl-6">
-                  <div className="text-center">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Played</p>
-                    <p className="text-xl font-black text-blue-950">{s.gamesPlayed}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Wins</p>
-                    <p className="text-xl font-black text-accent">{s.wins}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Best</p>
-                    <p className="text-xl font-black text-blue-950">{s.highestScore}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <button onClick={onClear} className="mt-12 text-[9px] font-black uppercase tracking-widest text-[#dcd7c9] hover:text-accent transition-colors flex items-center gap-2 relative z-10">
-          ↺ Reset Historical Data
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── SYNC STATUS ──────────────────────────────────────────────────────────
-function SyncStatus({ isSyncing }) {
-  return (
-    <div className="fixed bottom-4 right-4 z-[400] flex flex-col items-end gap-2">
-      <div className="px-3 py-1 bg-green-500/10 text-green-700 border border-green-200 rounded-full flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-        ● Local Backup: Live
-      </div>
-      <div className={`px-3 py-1.5 rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
-        isSyncing ? 'bg-blue-900 text-white' : 'bg-[#fdfcf0] text-blue-900/40 border border-[#dcd7c9] opacity-40'
-      }`}>
-        {isSyncing ? <><span className="animate-spin inline-block">☁</span> Syncing...</> : <>☁ Cloud Active</>}
-      </div>
-    </div>
-  );
-}
-
-// ─── MAIN APP ───────────────────────────────────────────────────────────────
 function App() {
-  const [fb, setFb] = useState(null);
-
-  // Wait for Firebase to load
-  useEffect(() => {
-    const onReady = () => setFb(window.__firebase);
-    if (window.__firebase) onReady();
-    else window.addEventListener('firebase-ready', onReady);
-    return () => window.removeEventListener('firebase-ready', onReady);
-  }, []);
-
-  const [gameState, setGameState] = useState(() => {
-    try {
-      const saved = localStorage.getItem('yahtzee_current_game');
-      if (saved) {
-        const p = JSON.parse(saved);
-        if (p?.players && Array.isArray(p.players)) return p;
-      }
-    } catch(e) {}
-    return { players: [], status: 'setup', currentPlayerIndex: 0, mode: 'free', ...genMatch() };
+  const [game, setGame] = useState(() => {
+    const saved = lsGet('ytz_game', null);
+    if (saved?.players && Array.isArray(saved.players)) return saved;
+    return { players: [], status: 'setup', mode: 'free', currentIdx: 0, matchNum: genMatchNum(), id: genId() };
   });
 
-  useEffect(() => {
-    localStorage.setItem('yahtzee_current_game', JSON.stringify(gameState));
-  }, [gameState]);
+  useEffect(() => { lsSet('ytz_game', game); }, [game]);
 
-  const [newPlayerName, setNewPlayerName] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [diceInput, setDiceInput] = useState([1,1,1,1,1,1]);
-  const [manualScore, setManualScore] = useState('');
-  const [isTurnProcessing, setIsTurnProcessing] = useState(false);
-  const [showFinalScoreboard, setShowFinalScoreboard] = useState(false);
-  const [showStats, setShowStats] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [stats, setStats] = useState({});
-  const [history, setHistory] = useState([]);
-  const statsSavedForGame = useRef(null);
+  const [newName, setNewName] = useState('');
+  const [selCat, setSelCat] = useState(null);
+  const [dice, setDice] = useState([1,1,1,1,1,1]);
+  const [manualInput, setManualInput] = useState('');
+  const [turnProcessing, setTurnProcessing] = useState(false);
+  const [showFinalBoard, setShowFinalBoard] = useState(false);
+  const [confirm, setConfirm] = useState(null);
 
-  // Firebase realtime sync
-  useEffect(() => {
-    if (!fb) return;
-    const { collection, query, orderBy, limit, onSnapshot, db } = fb;
-    const unsub1 = onSnapshot(query(collection(db,'stats')), snap => {
-      const s = {};
-      snap.forEach(d => { s[d.id] = d.data(); });
-      setStats(s);
-    }, console.error);
-    const unsub2 = onSnapshot(query(collection(db,'history'), orderBy('date','desc'), limit(50)), snap => {
-      const h = [];
-      snap.forEach(d => h.push(d.data()));
-      setHistory(h);
-    }, console.error);
-    return () => { unsub1(); unsub2(); };
-  }, [fb]);
-
-  // Save to cloud on game finish
-  useEffect(() => {
-    if (!fb || gameState.status !== 'finished' || statsSavedForGame.current === gameState.gameId) return;
-    const save = async () => {
-      setIsSyncing(true);
-      try {
-        const { db, doc, setDoc, getDoc, writeBatch, serverTimestamp } = fb;
-        const playerScores = gameState.players.map(p => ({ name: p.name, score: calcTotal(p.scores) }));
-        const maxScore = Math.max(...playerScores.map(p => p.score));
-        const winners = playerScores.filter(p => p.score === maxScore).map(p => p.name);
-
-        await setDoc(doc(db,'history',gameState.gameId), {
-          id: gameState.gameId, date: new Date().toISOString(),
-          matchNumber: gameState.matchNumber, players: playerScores,
-          winners, serverCreatedAt: serverTimestamp()
-        });
-
-        // Use transactions-style: read all in parallel, then batch write
-        const statRefs = playerScores.map(({name}) => doc(db,'stats',name));
-        const statDocs = await Promise.all(statRefs.map(r => getDoc(r)));
-        const batch = writeBatch(db);
-        playerScores.forEach(({name, score}, i) => {
-          const existing = statDocs[i].exists() ? statDocs[i].data() : null;
-          batch.set(statRefs[i], existing ? {
-            name, gamesPlayed: existing.gamesPlayed+1,
-            highestScore: Math.max(existing.highestScore, score),
-            wins: winners.includes(name) ? existing.wins+1 : existing.wins
-          } : { name, gamesPlayed:1, highestScore:score, wins: winners.includes(name)?1:0 });
-        });
-        await batch.commit();
-        statsSavedForGame.current = gameState.gameId;
-      } catch(e) { console.error('Cloud sync failed:', e); }
-      finally { setIsSyncing(false); }
-    };
-    save();
-  }, [gameState.status, gameState.gameId, fb]);
-
-  // ── Actions ──
-  const toggleDie = (i, dir=1) => setDiceInput(prev => {
-    const n=[...prev]; n[i]=((n[i]-1+dir+6)%6)+1; return n;
+  const toggleDie = (i, dir=1) => setDice(prev => {
+    const n = [...prev]; n[i] = ((n[i]-1+dir+6)%6)+1; return n;
   });
 
   const addPlayer = () => {
-    if (!newPlayerName.trim()) return;
-    setGameState(prev => ({ ...prev, players: [...prev.players, { id: genId(), name: newPlayerName.trim(), scores: {} }] }));
-    setNewPlayerName('');
+    if (!newName.trim()) return;
+    setGame(g => ({ ...g, players: [...g.players, { id: genId(), name: newName.trim(), scores: {} }] }));
+    setNewName('');
   };
-  const removePlayer = id => setGameState(prev => ({ ...prev, players: prev.players.filter(p => p.id !== id) }));
-  const movePlayer = (idx, dir) => setGameState(prev => {
-    const ps = [...prev.players], ni = dir==='up'?idx-1:idx+1;
-    if (ni<0||ni>=ps.length) return prev;
-    const [m] = ps.splice(idx,1); ps.splice(ni,0,m);
-    return {...prev, players:ps};
+  const removePlayer = id => setGame(g => ({ ...g, players: g.players.filter(p => p.id !== id) }));
+  const movePlayer = (idx, dir) => setGame(g => {
+    const ps = [...g.players], ni = dir === 'up' ? idx-1 : idx+1;
+    if (ni < 0 || ni >= ps.length) return g;
+    const [m] = ps.splice(idx, 1); ps.splice(ni, 0, m);
+    return { ...g, players: ps };
   });
 
-  const freshMatchState = (keep) => ({ ...keep, ...genMatch(), status:'playing', currentPlayerIndex:0, players: keep.players.map(p=>({...p,scores:{}})) });
+  const freshGame = (keep) => ({
+    ...keep,
+    id: genId(), matchNum: genMatchNum(), status: 'playing', currentIdx: 0,
+    players: keep.players.map(p => ({ ...p, scores: {} })),
+  });
 
-  const startGame = () => gameState.players.length && setGameState(prev => ({ ...prev, ...genMatch(), status:'playing' }));
-  const resetGame = () => setConfirmModal({ message:'Start a new match? All scores will be cleared.', onConfirm:() => { setGameState(prev => freshMatchState(prev)); setConfirmModal(null); }});
-  const handleRematch = () => { setGameState(prev => freshMatchState(prev)); setShowFinalScoreboard(false); setDiceInput([1,1,1,1,1,1]); };
+  const startGame = () => game.players.length && setGame(g => ({ ...g, status: 'playing', matchNum: genMatchNum(), id: genId() }));
+  const resetGame = () => setConfirm({ msg: 'Start a new match? All scores will be cleared.', fn: () => { setGame(g => freshGame(g)); setConfirm(null); }});
+  const rematch = () => { setGame(g => freshGame(g)); setShowFinalBoard(false); setDice([1,1,1,1,1,1]); };
   const backToSetup = () => {
-    if (gameState.status==='playing' && gameState.players.some(p=>Object.keys(p.scores).length>0)) {
-      setConfirmModal({ message:'Return to setup? Progress will be paused.', onConfirm:() => { setGameState(prev=>({...prev,status:'setup'})); setConfirmModal(null); }});
-    } else setGameState(prev=>({...prev,status:'setup'}));
+    if (game.status === 'playing' && game.players.some(p => Object.keys(p.scores).length > 0)) {
+      setConfirm({ msg: 'Return to setup? Progress will be paused.', fn: () => { setGame(g => ({ ...g, status: 'setup' })); setConfirm(null); }});
+    } else setGame(g => ({ ...g, status: 'setup' }));
   };
-  const simulateFull = () => setConfirmModal({
-    message:'Fill all scores randomly and end match immediately?',
-    onConfirm:() => {
-      setGameState(prev => ({...prev,
-        players:prev.players.map(p=>({...p, scores:ALL_CATS.reduce((a,c)=>{a[c]=Math.floor(Math.random()*60);return a;},{})})),
-        status:'finished'
-      }));
-      setConfirmModal(null);
-    }
-  });
 
   const updateScore = (playerIndex, category, score) => {
-    setGameState(prev => {
-      const newPlayers = prev.players.map((p,i) => i===playerIndex ? {...p, scores:{...p.scores,[category]:score}} : p);
-      const allDone = newPlayers.every(p => Object.keys(p.scores).length === ALL_CATS.length);
-      const nextIdx = prev.mode==='turn-based' ? (prev.currentPlayerIndex+1)%prev.players.length : prev.currentPlayerIndex;
-      return {...prev, players:newPlayers, currentPlayerIndex:nextIdx, status:allDone?'finished':prev.status};
+    setGame(prev => {
+      const newPlayers = prev.players.map((p,i) => i === playerIndex ? { ...p, scores: { ...p.scores, [category]: score } } : p);
+      const done = newPlayers.every(p => Object.keys(p.scores).length === ALL_CATS.length);
+      const nextIdx = prev.mode === 'turn-based' ? (prev.currentIdx+1) % prev.players.length : prev.currentIdx;
+      return { ...prev, players: newPlayers, currentIdx: nextIdx, status: done ? 'finished' : prev.status };
     });
-    setSelectedCategory(null); setManualScore(''); setIsTurnProcessing(false); setDiceInput([1,1,1,1,1,1]);
+    setSelCat(null); setManualInput(''); setTurnProcessing(false); setDice([1,1,1,1,1,1]);
   };
 
-  // Fixed clear functions — now also deletes from Firestore
-  const clearStats = () => setConfirmModal({
-    message:'Clear all lifetime statistics? This cannot be undone.',
-    onConfirm: async () => {
-      setConfirmModal(null);
-      if (fb) {
-        const { db, collection, getDocs, deleteDoc } = fb;
-        const snap = await getDocs(collection(db,'stats'));
-        snap.forEach(d => deleteDoc(d.ref));
-      }
-    }
-  });
-  const clearHistory = () => setConfirmModal({
-    message:'Clear match history? This cannot be undone.',
-    onConfirm: async () => {
-      setConfirmModal(null);
-      if (fb) {
-        const { db, collection, getDocs, deleteDoc } = fb;
-        const snap = await getDocs(collection(db,'history'));
-        snap.forEach(d => deleteDoc(d.ref));
-      }
-    }
-  });
-
-  const submitManualScore = () => {
-    if (!selectedCategory || manualScore === '') return;
-    const sum = Number(manualScore);
+  const submitManual = () => {
+    if (!selCat || manualInput === '') return;
+    const sum = Number(manualInput);
     if (isNaN(sum)) return;
-    const final = computeManualScore(selectedCategory.category, sum);
-    if (final !== null) updateScore(selectedCategory.playerIndex, selectedCategory.category, final);
+    const final = computeManualScore(selCat.category, sum);
+    if (final !== null) updateScore(selCat.playerIndex, selCat.category, final);
   };
 
-  // Shared modals block (rendered once instead of 3x)
-  const GlobalModals = () => (
-    <>
-      {showStats && <StatsModal stats={stats} onClose={() => setShowStats(false)} onClear={clearStats} />}
-      {showHistory && <HistoryModal history={history} onClose={() => setShowHistory(false)} onClear={clearHistory} />}
-      {confirmModal && <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={() => setConfirmModal(null)} />}
-    </>
+  if (game.status === 'setup') return (
+    <div className="min-h-screen p-6 md:p-12 flex flex-col items-center border-[12px] bg-[#fdfcf0] text-[#1a1a1a] border-[#dcd7c9] relative">
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER} />
+      <header className="max-w-2xl w-full mb-12 border-b-4 pb-10 border-[#dcd7c9]">
+        <h1 className="text-[clamp(60px,15vw,120px)] font-black tracking-[-6px] uppercase leading-[0.8] font-hand text-blue-900">Yahtzee</h1>
+        <p className="font-bold tracking-[3px] uppercase mt-4">Scoreboard v2.0</p>
+      </header>
+      <div className="max-w-md w-full border-4 border-black p-8 bg-white">
+        <div className="flex gap-2 mb-8">
+          <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addPlayer()} placeholder="PLAYER NAME"
+            className="flex-1 px-4 py-4 border-2 border-black rounded-none focus:outline-none focus:bg-gray-50 font-black uppercase text-sm tracking-widest" />
+          <button onClick={addPlayer} className="bg-blue-900 text-white px-6 font-black hover:bg-blue-800 transition-colors">ADD</button>
+        </div>
+        <div className="space-y-3 mb-8">
+          {game.players.map((p, idx) => (
+            <div key={p.id} className="flex items-center justify-between p-4 border-2 border-[#dcd7c9] bg-[#f5f2e8]/50">
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-0.5">
+                  <button onClick={() => movePlayer(idx,'up')} disabled={idx===0} className="text-[#dcd7c9] hover:text-blue-900 disabled:opacity-20 text-xs">▲</button>
+                  <button onClick={() => movePlayer(idx,'down')} disabled={idx===game.players.length-1} className="text-[#dcd7c9] hover:text-blue-900 disabled:opacity-20 text-xs">▼</button>
+                </div>
+                <div className="w-7 h-7 bg-blue-900 text-white flex items-center justify-center font-black text-xs">#{idx+1}</div>
+                <span className="font-hand text-2xl text-blue-800">{p.name}</span>
+              </div>
+              <button onClick={() => removePlayer(p.id)} className="text-gray-400 hover:text-red-500 transition-colors">✕</button>
+            </div>
+          ))}
+          {game.players.length === 0 && (
+            <p className="text-center py-10 text-gray-400 font-serif italic border-2 border-dashed border-[#dcd7c9]">Add players to begin</p>
+          )}
+        </div>
+        <div className="mb-8 p-4 border-2 border-[#dcd7c9] bg-[#f5f2e8]/50">
+          <label className="text-xs font-black uppercase tracking-widest block mb-3">Game Mode</label>
+          <div className="grid grid-cols-2 gap-2">
+            {['free','turn-based'].map(m => (
+              <button key={m} onClick={() => setGame(g => ({ ...g, mode: m }))}
+                className={`py-3 font-black uppercase text-xs tracking-widest border-2 transition-all ${game.mode===m?'bg-blue-900 text-white border-blue-900':'bg-white text-blue-900 border-[#dcd7c9]'}`}>
+                {m==='free'?'Free Score':'Turn-Based'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button disabled={game.players.length===0} onClick={startGame}
+          className="w-full bg-blue-900 text-white py-6 font-black text-2xl tracking-widest hover:bg-blue-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all uppercase">
+          ▶ Start Game
+        </button>
+      </div>
+      {confirm && <ConfirmModal message={confirm.msg} onConfirm={confirm.fn} onCancel={() => setConfirm(null)} />}
+    </div>
   );
 
-  // ── SETUP SCREEN ──
-  if (gameState.status === 'setup') {
+  if (game.status === 'finished' && !showFinalBoard) {
+    const sorted = [...game.players].sort((a,b) => calcTotal(b.scores) - calcTotal(a.scores));
     return (
-      <div className="min-h-screen font-sans p-6 md:p-12 flex flex-col items-center border-[12px] bg-[#fdfcf0] text-[#1a1a1a] border-[#dcd7c9] relative">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
-        <header className="max-w-2xl w-full mb-12 border-b-4 pb-10 border-[#dcd7c9] relative">
-          <h1 className="text-[clamp(60px,15vw,120px)] font-black tracking-[-6px] mb-2 uppercase leading-[0.8] font-hand text-blue-900">Yahtzee</h1>
-          <div className="flex justify-between items-end mt-4">
-            <p className="font-bold tracking-[3px] uppercase">Scoreboard Pro v1.0</p>
-            <p className="font-serif italic text-lg text-gray-500">Standard Scoring Rules</p>
-          </div>
-        </header>
-
-        <div className="max-w-md w-full border-4 border-black p-8 bg-white">
-          <div className="flex gap-2 mb-10">
-            <input type="text" value={newPlayerName} onChange={e=>setNewPlayerName(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&addPlayer()} placeholder="PLAYER NAME"
-              className="flex-1 px-4 py-4 border-2 border-black rounded-none focus:outline-none focus:bg-gray-50 font-black uppercase text-sm tracking-widest" />
-            <button onClick={addPlayer} className="bg-blue-900 text-white px-6 hover:bg-blue-800 transition-colors font-black shadow-[3px_3px_0px_#dcd7c9]">ADD</button>
-          </div>
-
-          <div className="space-y-4 mb-10">
-            {gameState.players.map((player, idx) => (
-              <div key={player.id} className="flex items-center justify-between p-4 border-2 border-[#dcd7c9] bg-[#f5f2e8]/50 group">
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => movePlayer(idx,'up')} disabled={idx===0} className="text-[#dcd7c9] hover:text-blue-900 disabled:opacity-20">▲</button>
-                    <button onClick={() => movePlayer(idx,'down')} disabled={idx===gameState.players.length-1} className="text-[#dcd7c9] hover:text-blue-900 disabled:opacity-20">▼</button>
-                  </div>
-                  <div className="w-8 h-8 bg-blue-900 text-white flex items-center justify-center font-black text-xs">#{idx+1}</div>
-                  <span className="font-hand text-2xl text-blue-800">{player.name}</span>
-                </div>
-                <button onClick={() => removePlayer(player.id)} className="text-gray-400 hover:text-accent transition-colors">✕</button>
-              </div>
-            ))}
-            {gameState.players.length === 0 && (
-              <p className="text-center py-12 text-gray-400 font-serif italic border-2 border-dashed border-[#dcd7c9]">Assemble your team</p>
-            )}
-          </div>
-
-          <div className="mb-10 p-4 border-2 border-[#dcd7c9] bg-[#f5f2e8]/50">
-            <label className="text-xs font-black uppercase tracking-widest block mb-4">Select Game Mode</label>
-            <div className="grid grid-cols-2 gap-2">
-              {['free','turn-based'].map(m => (
-                <button key={m} onClick={() => setGameState(prev=>({...prev,mode:m}))}
-                  className={`py-3 font-black uppercase text-xs tracking-widest border-2 transition-all ${gameState.mode===m?'bg-blue-900 text-white border-blue-900':'bg-white text-blue-900 border-[#dcd7c9]'}`}>
-                  {m==='free'?'Free Score':'Turn-Based'}
-                </button>
-              ))}
-            </div>
-            <p className="mt-3 text-[10px] uppercase font-bold text-gray-400">
-              {gameState.mode==='free'?'Manual entry for any player at any time.':'Turn-by-turn logic with dice suggestions.'}
-            </p>
-          </div>
-
-          <button disabled={gameState.players.length===0} onClick={startGame}
-            className="w-full bg-blue-900 text-white py-6 flex items-center justify-center gap-3 font-black text-2xl tracking-widest hover:bg-blue-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all uppercase shadow-[4px_4px_0px_#dcd7c9]">
-            ▶ Start Game
-          </button>
-          <button onClick={() => setShowStats(true)} className="w-full mt-4 flex items-center justify-center gap-2 py-4 border-2 border-[#dcd7c9] text-blue-900 font-black uppercase text-xs tracking-widest hover:bg-white transition-all">
-            ⊞ View Lifetime Stats
-          </button>
-          <button onClick={() => setShowHistory(true)} className="w-full mt-2 flex items-center justify-center gap-2 py-4 border-2 border-[#dcd7c9] text-blue-900/60 font-black uppercase text-[10px] tracking-widest hover:bg-white transition-all italic">
-            ≡ Match History
-          </button>
-        </div>
-        <GlobalModals />
-      </div>
-    );
-  }
-
-  // ── GAME OVER SCREEN ──
-  if (gameState.status === 'finished' && !showFinalScoreboard) {
-    const sorted = [...gameState.players].sort((a,b) => calcTotal(b.scores)-calcTotal(a.scores));
-    return (
-      <div className="min-h-screen p-6 md:p-24 flex flex-col items-center justify-center text-center border-[12px] relative bg-[#fdfcf0] text-[#1a1a1a] border-[#dcd7c9]">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
-        <div className="max-w-4xl w-full relative z-10">
+      <div className="min-h-screen p-6 md:p-24 flex flex-col items-center justify-center text-center border-[12px] relative bg-[#fdfcf0] border-[#dcd7c9]">
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER} />
+        <div className="max-w-3xl w-full relative z-10">
           <div className="text-6xl mb-8 animate-bounce">🏆</div>
           <h1 className="text-[clamp(60px,12vw,140px)] font-black uppercase leading-[0.8] tracking-[-6px] mb-4 font-hand text-blue-900">Game Over</h1>
-          <p className="text-2xl font-black uppercase tracking-[4px] mb-12 text-blue-900/40">Final Results & Rankings</p>
-          <div className="grid gap-6 mb-16">
+          <p className="text-xl font-black uppercase tracking-[4px] mb-12 text-blue-900/40">Match #{game.matchNum}</p>
+          <div className="grid gap-4 mb-12">
             {sorted.map((player, idx) => (
-              <div key={player.id} className={`flex items-center justify-between p-8 border-4 shadow-[8px_8px_0px_rgba(0,0,0,0.05)] ${idx===0?'border-blue-900 bg-white text-blue-900':'border-[#dcd7c9] bg-white/50 text-blue-900/60'}`}>
-                <div className="flex items-center gap-6">
-                  <span className={`text-5xl font-black ${idx===0?'text-blue-900':'text-blue-900/40'}`}>#{idx+1}</span>
-                  <div className="text-left">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Player</p>
-                    <h2 className="text-4xl md:text-5xl font-hand uppercase">{player.name}</h2>
-                  </div>
+              <div key={player.id} className={`flex items-center justify-between p-6 border-4 ${idx===0?'border-blue-900 bg-white':'border-[#dcd7c9] bg-white/50'}`}>
+                <div className="flex items-center gap-5">
+                  <span className={`text-4xl font-black ${idx===0?'text-blue-900':'text-blue-900/40'}`}>#{idx+1}</span>
+                  <h2 className="text-3xl md:text-4xl font-hand">{player.name}</h2>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Final Score</p>
-                  <p className={`text-5xl md:text-6xl font-black ${idx===0?'text-accent font-hand':''}`}>{calcTotal(player.scores)}</p>
-                </div>
+                <p className={`text-4xl md:text-5xl font-black ${idx===0?'text-accent':''}`}>{calcTotal(player.scores)}</p>
               </div>
             ))}
           </div>
           <div className="flex flex-col md:flex-row gap-4 justify-center">
-            <button onClick={handleRematch} className="px-12 py-6 bg-blue-900 text-white font-black uppercase text-xl tracking-widest hover:bg-blue-800 transition-all shadow-[6px_6px_0px_#dcd7c9]">Rematch</button>
-            <button onClick={() => setShowFinalScoreboard(true)} className="px-12 py-6 border-4 border-blue-900 text-blue-900 font-black uppercase text-xl tracking-widest hover:bg-white transition-all">See Scoreboard</button>
-            <button onClick={() => setConfirmModal({ message:'Exit to home? Scores will be cleared.', onConfirm:() => { setGameState(prev=>({...prev,status:'setup',players:[]})); setShowFinalScoreboard(false); setConfirmModal(null); }})}
-              className="px-12 py-6 border-4 border-[#dcd7c9] text-blue-900 font-black uppercase text-xl tracking-widest opacity-60 hover:opacity-100 transition-all font-serif italic">Exit to Menu</button>
+            <button onClick={rematch} className="px-10 py-5 bg-blue-900 text-white font-black uppercase text-lg tracking-widest hover:bg-blue-800 transition-all">Rematch</button>
+            <button onClick={() => setShowFinalBoard(true)} className="px-10 py-5 border-4 border-blue-900 text-blue-900 font-black uppercase text-lg tracking-widest hover:bg-white transition-all">See Scoreboard</button>
+            <button onClick={() => setConfirm({ msg:'Exit to menu?', fn:() => { setGame(g=>({...g,status:'setup',players:[]})); setConfirm(null); }})}
+              className="px-10 py-5 border-4 border-[#dcd7c9] text-blue-900/60 font-black uppercase text-lg tracking-widest hover:opacity-100 transition-all font-serif italic">Exit</button>
           </div>
         </div>
-        <GlobalModals />
+        {confirm && <ConfirmModal message={confirm.msg} onConfirm={confirm.fn} onCancel={() => setConfirm(null)} />}
       </div>
     );
   }
 
-  // ── MAIN SCOREBOARD ──
   return (
-    <div className="min-h-screen p-4 md:p-12 border-[12px] relative z-0 bg-[#fdfcf0] text-[#1a1a1a] border-[#dcd7c9]">
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
-
-      <header className="max-w-full mb-12 flex flex-col md:flex-row justify-between items-end gap-4 border-b-4 pb-10 relative z-20 border-[#dcd7c9]">
+    <div className="min-h-screen p-4 md:p-12 border-[12px] relative bg-[#fdfcf0] border-[#dcd7c9]">
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER} />
+      <header className="mb-10 flex flex-col md:flex-row justify-between items-end gap-4 border-b-4 pb-8 relative z-20 border-[#dcd7c9]">
         <div>
-          <h1 className="text-[clamp(60px,10vw,110px)] font-black uppercase leading-[0.8] tracking-[-4px] font-hand text-blue-900 opacity-80">Yahtzee</h1>
-          <p className="font-bold tracking-[2px] uppercase mt-2">Custom Scoreboard v1.0</p>
+          <h1 className="text-[clamp(48px,8vw,90px)] font-black uppercase leading-none tracking-[-4px] font-hand text-blue-900">Yahtzee</h1>
+          <p className="font-bold tracking-[2px] uppercase mt-1 text-sm">Match #{game.matchNum}</p>
         </div>
-        <div className="flex flex-col items-end gap-2 mb-2 font-serif italic text-lg text-gray-500">
-          <p>Match #{gameState.matchNumber}</p>
-          <div className="flex flex-wrap gap-2 mt-4 justify-end">
-            <button onClick={() => setShowHistory(true)} className="px-4 py-2 border-2 border-dashed border-gray-400 font-black uppercase text-[10px] tracking-widest text-gray-500 hover:text-black hover:border-black transition-all">History</button>
-            <button onClick={() => setShowStats(true)} className="px-4 py-2 border-2 border-blue-900/30 font-black uppercase text-[10px] tracking-widest text-blue-900 opacity-60 hover:opacity-100 hover:border-blue-900 transition-all">Stats</button>
-            {gameState.status === 'finished' ? (
-              <>
-                <button onClick={handleRematch} className="px-6 py-2 border-2 border-blue-900 bg-blue-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-blue-800 shadow-[3px_3px_0px_#dcd7c9]">Rematch</button>
-                <button onClick={() => setShowFinalScoreboard(false)} className="px-6 py-2 border-2 border-blue-900 font-black uppercase text-[10px] tracking-widest hover:bg-white">Back to Results</button>
-              </>
-            ) : (
-              <>
-                <button onClick={backToSetup} className="px-4 py-2 border-2 border-blue-900/30 text-blue-900/60 font-black uppercase text-[10px] tracking-widest hover:text-blue-900 hover:border-blue-900 transition-all">Edit Players</button>
-                <button onClick={resetGame} className="px-4 py-2 border-2 border-blue-900 bg-blue-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-blue-800 shadow-[3px_3px_0px_#dcd7c9]">Restart</button>
-                <button onClick={simulateFull} className="px-4 py-2 border-2 border-dashed border-blue-900/20 font-black uppercase text-[10px] tracking-widest text-blue-900/30 hover:text-blue-900 transition-all">Simulate</button>
-              </>
-            )}
-          </div>
+        <div className="flex flex-wrap gap-2 mb-1">
+          {game.status === 'finished' ? (
+            <>
+              <button onClick={rematch} className="px-5 py-2 bg-blue-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-blue-800">Rematch</button>
+              <button onClick={() => setShowFinalBoard(false)} className="px-5 py-2 border-2 border-blue-900 font-black uppercase text-[10px] tracking-widest">Back to Results</button>
+            </>
+          ) : (
+            <>
+              <button onClick={backToSetup} className="px-4 py-2 border-2 border-[#dcd7c9] text-blue-900/60 font-black uppercase text-[10px] tracking-widest hover:border-blue-900 hover:text-blue-900 transition-all">Edit Players</button>
+              <button onClick={resetGame} className="px-5 py-2 bg-blue-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-blue-800">Restart</button>
+            </>
+          )}
         </div>
       </header>
 
-      {/* Turn Manager */}
-      {gameState.mode === 'turn-based' && gameState.status === 'playing' && (
-        <div className="mb-12 border-4 border-black p-8 bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)]">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-            <div className="flex-1">
-              <div className="flex items-center gap-4 mb-2">
-                <span className="bg-accent text-white px-3 py-1 font-black text-xs uppercase tracking-widest">Active Turn</span>
-              </div>
-              <h2 className="text-5xl font-black uppercase tracking-[-2px]">{gameState.players[gameState.currentPlayerIndex]?.name}</h2>
+      {game.mode === 'turn-based' && game.status === 'playing' && (
+        <div className="mb-10 border-4 border-black p-6 bg-white shadow-[8px_8px_0px_rgba(0,0,0,1)]">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+              <span className="bg-accent text-white px-2 py-0.5 font-black text-[10px] uppercase tracking-widest">Active Turn</span>
+              <h2 className="text-4xl font-black uppercase tracking-tight mt-1">{game.players[game.currentIdx]?.name}</h2>
             </div>
             <div>
               <div className="flex gap-2 mb-3">
-                {diceInput.map((val, i) => (
+                {dice.map((val, i) => (
                   <button key={i} onClick={() => toggleDie(i,1)} onContextMenu={e=>{e.preventDefault();toggleDie(i,-1);}}
-                    className="w-14 h-14 bg-black text-white flex items-center justify-center text-2xl font-black shadow-[4px_4px_0px_#e63946] cursor-pointer select-none">
+                    className="w-12 h-12 bg-black text-white flex items-center justify-center text-xl font-black shadow-[3px_3px_0px_#e63946] select-none">
                     {val}
                   </button>
                 ))}
               </div>
-              {!isTurnProcessing
-                ? <button onClick={() => setIsTurnProcessing(true)} className="w-full bg-black text-white py-3 font-black uppercase tracking-widest text-sm hover:bg-accent transition-all">Confirm Dice & Get Suggestions</button>
-                : <button onClick={() => setIsTurnProcessing(false)} className="w-full border-2 border-black py-3 font-black uppercase tracking-widest text-sm hover:bg-gray-100 transition-all">Change Dice</button>
+              {!turnProcessing
+                ? <button onClick={() => setTurnProcessing(true)} className="w-full bg-black text-white py-2.5 font-black uppercase text-xs tracking-widest hover:bg-accent transition-all">Confirm Dice → Get Suggestions</button>
+                : <button onClick={() => setTurnProcessing(false)} className="w-full border-2 border-black py-2.5 font-black uppercase text-xs tracking-widest hover:bg-gray-100">Change Dice</button>
               }
             </div>
           </div>
-          {isTurnProcessing && (
-            <div className="mt-8 pt-8 border-t-4 border-black border-dashed">
-              <h3 className="text-xs font-black uppercase tracking-[2px] mb-6">Suggested Scorings</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {turnProcessing && (
+            <div className="mt-6 pt-6 border-t-4 border-black border-dashed">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                 {ALL_CATS.map(cat => {
-                  const score = TRADITIONAL_POINTS[cat]?.(diceInput) || 0;
-                  const isFilled = gameState.players[gameState.currentPlayerIndex]?.scores[cat] !== undefined;
-                  if (isFilled) return null;
+                  const score = CALC_POINTS[cat]?.(dice) || 0;
+                  const filled = game.players[game.currentIdx]?.scores[cat] !== undefined;
+                  if (filled) return null;
                   return (
-                    <button key={cat} onClick={() => updateScore(gameState.currentPlayerIndex, cat, score)}
-                      className={`p-4 border-2 border-black hover:scale-[1.02] transition-all text-left flex flex-col justify-between bg-white group ${score>0?'border-accent shadow-[4px_4px_0px_#e63946]':'opacity-40 grayscale hover:grayscale-0'}`}>
-                      <span className="text-[10px] font-black uppercase tracking-tighter opacity-60 mb-1 leading-tight">{CATEGORY_LABELS[cat]}</span>
-                      <span className="text-3xl font-black group-hover:text-accent">{score}</span>
+                    <button key={cat} onClick={() => updateScore(game.currentIdx, cat, score)}
+                      className={`p-3 border-2 text-left bg-white ${score>0?'border-accent shadow-[3px_3px_0px_#e63946]':'opacity-40'}`}>
+                      <span className="text-[9px] font-black uppercase tracking-tight block mb-1 opacity-60">{CATEGORY_LABELS[cat]}</span>
+                      <span className="text-2xl font-black">{score}</span>
                     </button>
                   );
                 })}
@@ -735,21 +396,20 @@ function App() {
         </div>
       )}
 
-      {/* Scoreboard Table */}
-      <div className="max-w-full overflow-x-auto pb-8">
-        <div className="inline-block min-w-full border-4 overflow-hidden shadow-2xl bg-[#fdfcf0] border-[#dcd7c9]">
+      <div className="overflow-x-auto pb-8">
+        <div className="inline-block min-w-full border-4 overflow-hidden bg-[#fdfcf0] border-[#dcd7c9]">
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b-4 border-[#dcd7c9]">
-                <th className="p-4 text-left font-black text-xs uppercase tracking-widest sticky left-0 z-10 border-r-4 w-48 md:w-64 bg-[#fdfcf0] border-[#dcd7c9]">Category</th>
-                {gameState.players.map((player, idx) => {
-                  const isCurrent = gameState.status==='playing' && gameState.currentPlayerIndex===idx;
+                <th className="p-3 text-left font-black text-xs uppercase tracking-widest sticky left-0 z-10 border-r-4 w-44 md:w-60 bg-[#fdfcf0] border-[#dcd7c9]">Category</th>
+                {game.players.map((player, idx) => {
+                  const active = game.status==='playing' && game.currentIdx===idx;
                   return (
-                    <th key={player.id} className={`p-4 text-center border-l-2 min-w-[140px] md:min-w-[200px] transition-colors ${isCurrent?'bg-blue-900/10':''} border-[#dcd7c9]`}>
-                      <div className={`text-[10px] font-black uppercase mb-1 tracking-widest ${isCurrent?'opacity-80':'opacity-60'}`}>Player</div>
-                      <div className="text-2xl md:text-3xl font-black truncate font-hand">{player.name}</div>
-                      <div className="text-xl font-serif italic mt-1 text-accent">{calcTotal(player.scores)} Pts</div>
-                      {isCurrent && <div className="w-full h-1 bg-blue-900 mt-2" />}
+                    <th key={player.id} className={`p-4 text-center border-l-2 min-w-[130px] md:min-w-[180px] ${active?'bg-blue-900/10':''} border-[#dcd7c9]`}>
+                      <div className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">Player</div>
+                      <div className="text-2xl md:text-3xl font-hand font-black truncate">{player.name}</div>
+                      <div className="text-lg font-serif italic mt-0.5 text-accent">{calcTotal(player.scores)} pts</div>
+                      {active && <div className="w-full h-1 bg-blue-900 mt-2" />}
                     </th>
                   );
                 })}
@@ -757,17 +417,17 @@ function App() {
             </thead>
             <tbody>
               <SectionHeader title="Upper Section" />
-              {UPPER_CATS.map(cat => <ScoreRow key={cat} category={cat} players={gameState.players} onClick={pIdx => setSelectedCategory({playerIndex:pIdx,category:cat})} />)}
-              <SummaryRow title="Upper Total" valueFn={calcUpper} players={gameState.players} />
-              <SummaryRow title="Bonus (+35)" valueFn={s=>calcBonus(calcUpper(s))} players={gameState.players} />
+              {UPPER_CATS.map(cat => <ScoreRow key={cat} category={cat} players={game.players} onClick={idx => setSelCat({playerIndex:idx,category:cat})} />)}
+              <SummaryRow title="Upper Total" valueFn={calcUpper} players={game.players} />
+              <SummaryRow title="Bonus +35 (need 63)" valueFn={s=>calcBonus(calcUpper(s))} players={game.players} />
               <SectionHeader title="Lower Section" />
-              {LOWER_CATS.map(cat => <ScoreRow key={cat} category={cat} players={gameState.players} onClick={pIdx => setSelectedCategory({playerIndex:pIdx,category:cat})} />)}
-              <SummaryRow title="Lower Total" valueFn={calcLower} players={gameState.players} />
+              {LOWER_CATS.map(cat => <ScoreRow key={cat} category={cat} players={game.players} onClick={idx => setSelCat({playerIndex:idx,category:cat})} />)}
+              <SummaryRow title="Lower Total" valueFn={calcLower} players={game.players} />
               <tr className="bg-[#f5f2e8]">
-                <td className="p-6 font-black text-3xl uppercase tracking-tighter sticky left-0 z-10 border-t-4 border-r-4 bg-[#f5f2e8] border-[#dcd7c9]">Grand Total</td>
-                {gameState.players.map(player => (
-                  <td key={player.id} className="p-6 text-center border-l-2 border-t-4 bg-[#f5f2e8] border-[#dcd7c9]">
-                    <span className="text-5xl font-black text-accent">{calcTotal(player.scores)}</span>
+                <td className="p-5 font-black text-2xl uppercase tracking-tighter sticky left-0 z-10 border-t-4 border-r-4 bg-[#f5f2e8] border-[#dcd7c9]">Grand Total</td>
+                {game.players.map(p => (
+                  <td key={p.id} className="p-5 text-center border-l-2 border-t-4 bg-[#f5f2e8] border-[#dcd7c9]">
+                    <span className="text-4xl font-black text-accent">{calcTotal(p.scores)}</span>
                   </td>
                 ))}
               </tr>
@@ -776,70 +436,52 @@ function App() {
         </div>
       </div>
 
-      {/* Score Entry Modal */}
-      {selectedCategory && (
+      {selCat && (
         <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-[#fdfcf0] border-[6px] border-[#dcd7c9] p-8 md:p-10 rounded-none shadow-[24px_24px_0px_rgba(0,0,0,0.1)] max-w-lg w-full relative max-h-[90vh] overflow-y-auto">
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER_BG} />
-            <h3 className="text-5xl font-black mb-2 uppercase leading-none tracking-tighter font-hand text-blue-900 relative z-10">Score Entry</h3>
-            <div className="flex items-center gap-2 mb-2 text-sm font-black uppercase tracking-widest text-blue-900/50 relative z-10">
-              <span className="bg-blue-900 text-white px-2 py-1">{CATEGORY_LABELS[selectedCategory.category]}</span>
-              <span>•</span>
-              <span>{gameState.players[selectedCategory.playerIndex]?.name}</span>
+          <div className="bg-[#fdfcf0] border-[6px] border-[#dcd7c9] p-8 rounded-none shadow-[24px_24px_0px_rgba(0,0,0,0.1)] max-w-lg w-full relative max-h-[90vh] overflow-y-auto">
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={PAPER} />
+            <h3 className="text-4xl font-black uppercase font-hand text-blue-900 relative z-10">{CATEGORY_LABELS[selCat.category]}</h3>
+            <div className="flex items-center gap-2 mb-1 relative z-10">
+              <span className="font-black text-sm uppercase tracking-widest text-blue-900/60">{game.players[selCat.playerIndex]?.name}</span>
             </div>
-            <p className="text-xs font-bold text-blue-800/60 mb-8 relative z-10 italic">Rule: {CATEGORY_DESCRIPTIONS[selectedCategory.category]}</p>
-
-            {/* Dice Helper */}
-            <div className="mb-10 relative z-10">
-              <div className="flex justify-between items-center mb-4">
-                <label className="text-xs font-black uppercase tracking-[2px] text-blue-900">Dice Helper</label>
-                <span className="text-[10px] font-bold uppercase text-blue-900/40 hidden md:block">Tap: +1 | Long-press: -1</span>
-              </div>
-              <div className="grid grid-cols-6 gap-2 sm:gap-4">
-                {diceInput.map((val, i) => (
+            <p className="text-xs text-blue-800/50 mb-6 italic relative z-10">{CATEGORY_DESCRIPTIONS[selCat.category]}</p>
+            <div className="mb-8 relative z-10">
+              <label className="text-xs font-black uppercase tracking-[2px] text-blue-900 block mb-3">Dice Helper <span className="opacity-40 normal-case font-normal">(click +1, right-click -1)</span></label>
+              <div className="grid grid-cols-6 gap-2">
+                {dice.map((val, i) => (
                   <button key={i} onClick={() => toggleDie(i,1)} onContextMenu={e=>{e.preventDefault();toggleDie(i,-1);}}
-                    className="w-full aspect-square rounded-none flex items-center justify-center cursor-pointer select-none bg-white border-2 border-[#dcd7c9] shadow-[3px_3px_0px_#888] hover:border-blue-900 transition-all">
+                    className="w-full aspect-square bg-white border-2 border-[#dcd7c9] shadow-[2px_2px_0px_#888] hover:border-blue-900 transition-all select-none">
                     <Die value={val} />
                   </button>
                 ))}
               </div>
-              <button onClick={() => updateScore(selectedCategory.playerIndex, selectedCategory.category, TRADITIONAL_POINTS[selectedCategory.category]?.(diceInput)||0)}
-                className="w-full mt-6 bg-blue-900 text-white py-5 font-black uppercase text-lg tracking-widest hover:bg-blue-800 transition-all shadow-[4px_4px_0px_#dcd7c9]">
-                Apply Calculated: {TRADITIONAL_POINTS[selectedCategory.category]?.(diceInput)||0} Pts
+              <button onClick={() => updateScore(selCat.playerIndex, selCat.category, CALC_POINTS[selCat.category]?.(dice)||0)}
+                className="w-full mt-4 bg-blue-900 text-white py-4 font-black uppercase tracking-widest hover:bg-blue-800 transition-all">
+                Apply: {CALC_POINTS[selCat.category]?.(dice)||0} pts
               </button>
             </div>
-
-            {/* Manual Entry */}
-            <div className="space-y-6 pt-8 border-t-2 border-[#dcd7c9] relative z-10">
-              <div>
-                <label className="text-xs font-black uppercase tracking-[2px] block mb-4 text-blue-900/60">
-                  Manual Dice Sum {CATEGORY_BONUSES[selectedCategory.category] > 0 && `(+${CATEGORY_BONUSES[selectedCategory.category]} bonus)`}
-                </label>
-                <div className="flex gap-3">
-                  <input type="number" autoFocus placeholder="Enter Dice Sum"
-                    value={manualScore} onChange={e => setManualScore(e.target.value)}
-                    onKeyDown={e => e.key==='Enter' && submitManualScore()}
-                    className="flex-1 px-4 py-4 border-4 border-[#dcd7c9] font-hand text-3xl focus:bg-white outline-none text-blue-900" />
-                  <button onClick={submitManualScore} className="bg-blue-900 text-white px-8 font-black uppercase text-sm tracking-widest hover:bg-blue-800 shadow-[4px_4px_0px_#dcd7c9]">Enter</button>
-                </div>
-                {manualScore !== '' && !isNaN(Number(manualScore)) && (() => {
-                  const final = computeManualScore(selectedCategory.category, Number(manualScore));
-                  return final !== null && (
-                    <p className="mt-2 text-[10px] font-black uppercase text-blue-900">
-                      → Result: <span className="text-accent">{final} pts</span>
-                    </p>
-                  );
-                })()}
+            <div className="pt-6 border-t-2 border-[#dcd7c9] space-y-4 relative z-10">
+              <label className="text-xs font-black uppercase tracking-[2px] text-blue-900/60 block">
+                Manual sum {CATEGORY_BONUSES[selCat.category] > 0 && `(+${CATEGORY_BONUSES[selCat.category]} bonus auto-added)`}
+              </label>
+              <div className="flex gap-3">
+                <input type="number" autoFocus placeholder="Dice sum"
+                  value={manualInput} onChange={e => setManualInput(e.target.value)}
+                  onKeyDown={e => e.key==='Enter' && submitManual()}
+                  className="flex-1 px-4 py-3 border-4 border-[#dcd7c9] font-hand text-3xl outline-none text-blue-900 focus:bg-white" />
+                <button onClick={submitManual} className="bg-blue-900 text-white px-6 font-black uppercase text-sm tracking-widest hover:bg-blue-800">OK</button>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => setConfirmModal({
-                  message: `Scratch ${CATEGORY_LABELS[selectedCategory.category]} for ${gameState.players[selectedCategory.playerIndex]?.name}?`,
-                  onConfirm: () => { updateScore(selectedCategory.playerIndex, selectedCategory.category, 'scratch'); setConfirmModal(null); }
-                })} className="py-4 border-4 border-red-200 text-red-600 font-black uppercase text-xs tracking-widest hover:bg-red-50 transition-colors flex items-center justify-center gap-2">
-                  ✕ Confirm Scratch (0)
+              {manualInput !== '' && !isNaN(Number(manualInput)) && (() => {
+                const final = computeManualScore(selCat.category, Number(manualInput));
+                return final !== null && <p className="text-[10px] font-black uppercase text-blue-900">→ <span className="text-accent">{final} pts</span></p>;
+              })()}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button onClick={() => setConfirm({ msg:`Scratch ${CATEGORY_LABELS[selCat.category]} for ${game.players[selCat.playerIndex]?.name}?`, fn:() => { updateScore(selCat.playerIndex, selCat.category, 'scratch'); setConfirm(null); }})}
+                  className="py-3 border-4 border-red-200 text-red-600 font-black uppercase text-xs tracking-widest hover:bg-red-50">
+                  ✕ Scratch (0 pts)
                 </button>
-                <button onClick={() => { setSelectedCategory(null); setManualScore(''); setDiceInput([1,1,1,1,1,1]); }}
-                  className="py-4 bg-[#f5f2e8] text-gray-500 font-black uppercase text-xs tracking-widest hover:bg-white transition-colors">
+                <button onClick={() => { setSelCat(null); setManualInput(''); setDice([1,1,1,1,1,1]); }}
+                  className="py-3 bg-[#f5f2e8] text-gray-500 font-black uppercase text-xs tracking-widest hover:bg-white">
                   Cancel
                 </button>
               </div>
@@ -848,14 +490,12 @@ function App() {
         </div>
       )}
 
-      <GlobalModals />
-      <SyncStatus isSyncing={isSyncing} />
+      {confirm && <ConfirmModal message={confirm.msg} onConfirm={confirm.fn} onCancel={() => setConfirm(null)} />}
     </div>
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
